@@ -8,6 +8,8 @@ import {
   describeAgentInfoVersionMismatch,
 } from "#client/agent-info-schema.js";
 import { ClientError } from "#client/client-error.js";
+import { throwIfAborted } from "#client/abort-signal.js";
+import { waitWithSignal } from "#shared/wait-with-signal.js";
 import { ClientSessions } from "#client/sessions.js";
 import { createClientUrl } from "#client/url.js";
 import type {
@@ -136,8 +138,14 @@ export class Client {
    * auth/header cascade used by {@link health}, {@link info}, and sessions.
    */
   async fetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const signal = init.signal ?? undefined;
+    throwIfAborted(signal);
     const url = createClientUrl(this.#baseUrl, path);
-    const headers = await this.#resolveHeaders(headersInitToRecord(init.headers));
+    const headers = await waitWithSignal(
+      this.#resolveHeaders(headersInitToRecord(init.headers)),
+      signal,
+    );
+    throwIfAborted(signal);
     return await fetch(url, withRedirectPolicy({ ...init, headers }, this.#redirect));
   }
 

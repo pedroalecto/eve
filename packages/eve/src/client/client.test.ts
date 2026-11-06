@@ -57,6 +57,54 @@ afterEach(() => {
 });
 
 describe("Client request policy", () => {
+  it.each(["headers", "auth"] as const)(
+    "aborts while %s is pending and never sends the abandoned request",
+    async (provider) => {
+      const pending = Promise.withResolvers<string>();
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
+      const controller = new AbortController();
+      const reason = new Error("request cancelled");
+      const client = new Client({
+        baseUrl: "https://eve.test",
+        ...(provider === "auth"
+          ? { auth: { vercelOidc: { token: () => pending.promise } } }
+          : { headers: async () => ({ "x-credential": await pending.promise }) }),
+      });
+      const request = client.fetch("/custom", { signal: controller.signal });
+      const rejected = expect(request).rejects.toBe(reason);
+
+      try {
+        controller.abort(reason);
+        await rejected;
+      } finally {
+        pending.resolve("late-token");
+        await request.catch(() => undefined);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not resolve credentials or send an already-aborted request", async () => {
+    const token = vi.fn().mockResolvedValue("token");
+    const headers = vi.fn().mockResolvedValue({ "x-credential": "token" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
+    const reason = new Error("request cancelled");
+    const client = new Client({
+      baseUrl: "https://eve.test",
+      auth: { bearer: token },
+      headers,
+    });
+
+    await expect(client.fetch("/custom", { signal: AbortSignal.abort(reason) })).rejects.toBe(
+      reason,
+    );
+    expect(token).not.toHaveBeenCalled();
+    expect(headers).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("forwards inspection cancellation without changing authentication", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

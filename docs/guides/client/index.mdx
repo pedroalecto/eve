@@ -41,7 +41,7 @@ const info = await client.info();
 console.log(info.agent.name, info.agent.model.id);
 ```
 
-Pass `info({ signal })` to cancel the HTTP request. The signal applies only after custom header and credential callbacks resolve, so it doesn't bound how long those callbacks take.
+Pass `info({ signal })` to cancel the request, including the wait for custom header and credential callbacks. `client.fetch(path, { signal })` follows the same cancellation behavior. Cancellation stops waiting for those callbacks; it does not stop the callbacks themselves. If they resolve after cancellation, the client does not send an HTTP request.
 
 The response contains:
 
